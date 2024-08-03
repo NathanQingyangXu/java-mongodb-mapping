@@ -4,6 +4,11 @@ import com.mongodb.assertions.Assertions;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.lang.Nullable;
+import org.bson.BsonWriter;
+import org.bson.codecs.Codec;
+import org.bson.codecs.EncoderContext;
+import org.bson.codecs.pojo.PojoCodecProvider;
+import org.bson.json.JsonWriter;
 import org.bson.types.ObjectId;
 import org.hibernate.engine.jdbc.mutation.JdbcValueBindings;
 import org.hibernate.engine.jdbc.mutation.TableInclusionChecker;
@@ -14,6 +19,7 @@ import org.hibernate.omm.util.StringUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.CharArrayWriter;
 import java.io.InputStream;
 import java.io.Reader;
 import java.math.BigDecimal;
@@ -53,6 +59,8 @@ public class MongoPreparedStatement extends MongoStatement
     private final String parameterizedCommandJson;
     private final Map<Integer, String> parameters;
 
+    private final PojoCodecProvider pojoCodecProvider;
+
     public MongoPreparedStatement(
             MongoDatabase mongoDatabase,
             ClientSession clientSession,
@@ -61,6 +69,7 @@ public class MongoPreparedStatement extends MongoStatement
         super(mongoDatabase, clientSession, connection);
         this.parameterizedCommandJson = parameterizedCommandJson;
         this.parameters = new HashMap<>();
+        this.pojoCodecProvider = PojoCodecProvider.builder().automatic( true ).build();
     }
 
     @Override
@@ -200,6 +209,7 @@ public class MongoPreparedStatement extends MongoStatement
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public void setArray(int parameterIndex, Array x) throws SimulatedSQLException {
         Assertions.notNull("x", x);
         try {
@@ -208,9 +218,18 @@ public class MongoPreparedStatement extends MongoStatement
             if (array.length == 0) {
                 json = "[]";
             } else {
-                json = "[" + Arrays.stream(array).map(obj -> obj instanceof String aStr ?
-                        StringUtil.writeStringHelper(aStr) :
-                        obj.toString()).collect(Collectors.joining(",")) + "]";
+                Class clazz = array[0].getClass();
+                Codec codec = pojoCodecProvider.get(clazz, mongoDatabase.getCodecRegistry());
+                JsonWriter jsonWriter = new JsonWriter(new CharArrayWriter());
+                jsonWriter.writeStartArray();
+                for (int i = 0; i < array.length; i++) {
+                    if (i > 0) {
+                        jsonWriter.writeString(", ");
+                    }
+                    codec.encode(jsonWriter, array[i], EncoderContext.builder().build());
+                }
+                jsonWriter.writeEndArray();
+                json = jsonWriter.toString();
             }
             parameters.put(parameterIndex, json);
         } catch (SQLException cause) {
@@ -314,4 +333,5 @@ public class MongoPreparedStatement extends MongoStatement
         }
         return command;
     }
+
 }
