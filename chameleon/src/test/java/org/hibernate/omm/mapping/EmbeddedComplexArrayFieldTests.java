@@ -1,11 +1,12 @@
 package org.hibernate.omm.mapping;
 
+import com.mongodb.client.model.Filters;
 import jakarta.persistence.Embeddable;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Struct;
 import org.hibernate.omm.AbstractMongodbIntegrationTests;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -17,23 +18,25 @@ import java.util.List;
 class EmbeddedComplexArrayFieldTests extends AbstractMongodbIntegrationTests {
 
     @Test
-    @Disabled("Hibernate v6,6 will fix the issue; waiting for its release to finish the test")
     void test() {
         getSessionFactory().inTransaction(session -> {
-            var tag = new TagsByAuthor();
-            tag.author = "Nathan Xu";
-            tag.tags = List.of("comedy", "drama");
+            var tag = new Tag();
+            tag.tag = "comedy";
             var movie = new Movie();
             movie.id = 1;
-            movie.title = "Forrest Gump";
-            movie.tagsByAuthor = List.of(tag);
+            movie.tags = new Tag[] { tag };
             session.persist(movie);
         });
+
+        var doc = getMongoDatabase().getCollection("movies")
+                .find(Filters.eq(1)).first();
+
+        System.out.println(doc); // minor defect still but should be easy to solve
     }
 
     @Override
     public List<Class<?>> getAnnotatedClasses() {
-        return List.of(Movie.class, TagsByAuthor.class);
+        return List.of(Movie.class, Tag.class);
     }
 
     @Entity(name = "Movie")
@@ -41,13 +44,13 @@ class EmbeddedComplexArrayFieldTests extends AbstractMongodbIntegrationTests {
     static class Movie {
         @Id
         Integer id;
-        String title;
-        List<TagsByAuthor> tagsByAuthor;
+
+        @Struct(name = "tag")
+        Tag[] tags;
     }
 
     @Embeddable
-    static class TagsByAuthor {
-        String author;
-        List<String> tags;
+    static class Tag {
+        String tag;
     }
 }

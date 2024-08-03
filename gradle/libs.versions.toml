@@ -3,7 +3,7 @@
 
 [versions]
 junit-jupiter = "5.10.2"
-hibernate-orm-core = "6.5.2.Final"
+hibernate-orm-core = "6.6.0.CR1"
 mongodb-java-driver = "5.1.2"
 testcontainers-mongodb = "1.20.0"
 logback-classic = "1.5.6"
