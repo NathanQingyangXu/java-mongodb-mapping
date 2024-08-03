@@ -16,7 +16,7 @@ import org.hibernate.dialect.aggregate.AggregateSupport;
 import org.hibernate.dialect.aggregate.PostgreSQLAggregateSupport;
 import org.hibernate.engine.jdbc.dialect.spi.DialectResolutionInfo;
 import org.hibernate.omm.ast.MongoSqlAstTranslatorFactory;
-import org.hibernate.omm.jdbc.adapter.ArrayAdapter;
+import org.hibernate.omm.jdbc.MongoArray;
 import org.hibernate.omm.type.ObjectIdJavaType;
 import org.hibernate.omm.type.ObjectIdJdbcType;
 import org.hibernate.omm.util.StringUtil;
@@ -109,19 +109,19 @@ public class MongoDialect extends Dialect {
         // with @Lob will attempt to use
         // BlobTypeDescriptor.PRIMITIVE_ARRAY_BINDING.  Since the
         // dialect uses oid for Blobs, byte arrays cannot be used.
-        jdbcTypeRegistry.addDescriptor( Types.BLOB, BlobJdbcType.BLOB_BINDING );
-        jdbcTypeRegistry.addDescriptor( Types.CLOB, ClobJdbcType.CLOB_BINDING );
+        jdbcTypeRegistry.addDescriptor(Types.BLOB, BlobJdbcType.BLOB_BINDING);
+        jdbcTypeRegistry.addDescriptor(Types.CLOB, ClobJdbcType.CLOB_BINDING);
         // Don't use this type due to https://github.com/pgjdbc/pgjdbc/issues/2862
         //jdbcTypeRegistry.addDescriptor( TimestampUtcAsOffsetDateTimeJdbcType.INSTANCE );
-        jdbcTypeRegistry.addDescriptor( XmlJdbcType.INSTANCE );
+        jdbcTypeRegistry.addDescriptor(XmlJdbcType.INSTANCE);
 
-        jdbcTypeRegistry.addDescriptorIfAbsent( PostgreSQLCastingInetJdbcType.INSTANCE );
-        jdbcTypeRegistry.addDescriptorIfAbsent( PostgreSQLCastingIntervalSecondJdbcType.INSTANCE );
-        jdbcTypeRegistry.addDescriptorIfAbsent( PostgreSQLStructCastingJdbcType.INSTANCE );
-        jdbcTypeRegistry.addDescriptorIfAbsent( PostgreSQLCastingJsonJdbcType.JSONB_INSTANCE );
+        jdbcTypeRegistry.addDescriptorIfAbsent(PostgreSQLCastingInetJdbcType.INSTANCE);
+        jdbcTypeRegistry.addDescriptorIfAbsent(PostgreSQLCastingIntervalSecondJdbcType.INSTANCE);
+        jdbcTypeRegistry.addDescriptorIfAbsent(PostgreSQLStructCastingJdbcType.INSTANCE);
+        jdbcTypeRegistry.addDescriptorIfAbsent(PostgreSQLCastingJsonJdbcType.JSONB_INSTANCE);
 
         // PostgreSQL requires a custom binder for binding untyped nulls as VARBINARY
-        typeContributions.contributeJdbcType( ObjectNullAsBinaryTypeJdbcType.INSTANCE );
+        typeContributions.contributeJdbcType(ObjectNullAsBinaryTypeJdbcType.INSTANCE);
 
         // Until we remove StandardBasicTypes, we have to keep this
         typeContributions.contributeType(
@@ -129,15 +129,15 @@ public class MongoDialect extends Dialect {
                         ObjectNullAsBinaryTypeJdbcType.INSTANCE,
                         typeContributions.getTypeConfiguration()
                                 .getJavaTypeRegistry()
-                                .getDescriptor( Object.class )
+                                .getDescriptor(Object.class)
                 )
         );
 
-        jdbcTypeRegistry.addDescriptor( PostgreSQLEnumJdbcType.INSTANCE );
-        jdbcTypeRegistry.addDescriptor( PostgreSQLOrdinalEnumJdbcType.INSTANCE );
-        jdbcTypeRegistry.addDescriptor( PostgreSQLUUIDJdbcType.INSTANCE );
+        jdbcTypeRegistry.addDescriptor(PostgreSQLEnumJdbcType.INSTANCE);
+        jdbcTypeRegistry.addDescriptor(PostgreSQLOrdinalEnumJdbcType.INSTANCE);
+        jdbcTypeRegistry.addDescriptor(PostgreSQLUUIDJdbcType.INSTANCE);
 
-        jdbcTypeRegistry.addTypeConstructor( new PostgreSQLArrayJdbcTypeConstructor() {
+        jdbcTypeRegistry.addTypeConstructor(new PostgreSQLArrayJdbcTypeConstructor() {
             @Override
             public JdbcType resolveType(
                     TypeConfiguration typeConfiguration,
@@ -153,7 +153,9 @@ public class MongoDialect extends Dialect {
 
                             @Override
                             protected void doBind(PreparedStatement st, X value, int index, WrapperOptions options) throws SQLException {
-                                st.setArray(index, (ArrayAdapter) () -> value);
+                                var array = new MongoArray(value, elementType.getFriendlyName());
+                                array.setBaseType(elementType.getJdbcTypeCode());
+                                st.setArray(index, array);
                             }
 
                             @Override
@@ -164,11 +166,11 @@ public class MongoDialect extends Dialect {
                     }
                 };
             }
-        } );
+        });
     }
 
     @Override
     public AggregateSupport getAggregateSupport() {
-        return PostgreSQLAggregateSupport.valueOf( this );
+        return PostgreSQLAggregateSupport.valueOf(this);
     }
 }

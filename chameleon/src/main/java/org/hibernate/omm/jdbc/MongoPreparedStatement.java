@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.CharArrayWriter;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.math.BigDecimal;
@@ -34,6 +35,8 @@ import java.sql.SQLException;
 import java.sql.SQLXML;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.sql.Types;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Calendar;
 import java.util.HashMap;
@@ -66,7 +69,7 @@ public class MongoPreparedStatement extends MongoStatement
         super(mongoDatabase, clientSession, connection);
         this.parameterizedCommandJson = parameterizedCommandJson;
         this.parameters = new HashMap<>();
-        this.pojoCodecProvider = PojoCodecProvider.builder().automatic( true ).build();
+        this.pojoCodecProvider = PojoCodecProvider.builder().automatic(true).build();
     }
 
     @Override
@@ -206,38 +209,66 @@ public class MongoPreparedStatement extends MongoStatement
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public void setArray(int parameterIndex, Array x) throws SimulatedSQLException {
         Assertions.notNull("x", x);
+
         try {
-            Object[] array = (Object[]) x.getArray();
-            String json;
-            if (array.length == 0) {
-                json = "[]";
+            Iterable<?> iterable;
+            if (x.getArray().getClass().isArray()) {
+                iterable = Arrays.asList((Object[]) x.getArray());
             } else {
-                Class clazz = array[0].getClass();
-                Codec codec = pojoCodecProvider.get(clazz, mongoDatabase.getCodecRegistry());
-                Assertions.assertNotNull(codec);
-                var stringWriter = new CharArrayWriter();
-                JsonWriter jsonWriter = new JsonWriter(stringWriter);
-                jsonWriter.writeStartDocument();
-                jsonWriter.writeStartArray("fakeRoot");
-                for (int i = 0; i < array.length; i++) {
-                    if (i > 0) {
-                        jsonWriter.writeString(", ");
-                    }
-                    codec.encode(jsonWriter, array[i], EncoderContext.builder().build());
-                }
-                jsonWriter.writeEndArray();
-                jsonWriter.writeEndDocument();
-                String wholeJson = stringWriter.toString();
-                int arrayStartIndex = wholeJson.indexOf('['), arrayEndIndex = wholeJson.lastIndexOf(']');
-                json = wholeJson.substring(arrayStartIndex, arrayEndIndex + 1);
+                iterable = ((Iterable<?>) x.getArray());
+            }
+            final String json;
+            if (x.getBaseType() == Types.STRUCT) {
+                json = getArrayJsonForStruct(iterable);
+            } else {
+                json = getArrayJsonForNonStruct(iterable);
             }
             parameters.put(parameterIndex, json);
-        } catch (SQLException cause) {
+        } catch (SQLException | IOException cause) {
             throw new SimulatedSQLException(cause.getMessage(), cause);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private String getArrayJsonForStruct(Iterable<?> iterable) {
+        var stringWriter = new CharArrayWriter();
+        var jsonWriter = new JsonWriter(stringWriter);
+        jsonWriter.writeStartDocument();
+        jsonWriter.writeStartArray("fakeRoot");
+
+        Codec codec = null;
+        for (Object obj : iterable) {
+            if (codec == null) {
+                codec = pojoCodecProvider.get(obj.getClass(), mongoDatabase.getCodecRegistry());
+                Assertions.assertNotNull(codec);
+            }
+            codec.encode(jsonWriter, obj, EncoderContext.builder().build());
+        }
+        jsonWriter.writeEndArray();
+        jsonWriter.writeEndDocument();
+        String wholeJson = stringWriter.toString();
+        int arrayStartIndex = wholeJson.indexOf('['), arrayEndIndex = wholeJson.lastIndexOf(']');
+        return wholeJson.substring(arrayStartIndex, arrayEndIndex + 1);
+    }
+
+    private String getArrayJsonForNonStruct(Iterable<?> iterable) throws IOException {
+        var stringWriter = new CharArrayWriter();
+        stringWriter.write("[ ");
+        var first = true;
+        for (Object obj : iterable) {
+            if (!first) {
+                stringWriter.write(", ");
+            } else {
+                first = false;
+            }
+            stringWriter.write(obj instanceof String aStr ?
+                    StringUtil.writeStringHelper(aStr) :
+                    obj.toString());
+        }
+        stringWriter.write(" ]");
+        return stringWriter.toString();
     }
 
     @Override

@@ -5,7 +5,6 @@ import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.lang.Nullable;
 import org.bson.Document;
-import org.hibernate.omm.jdbc.adapter.ArrayAdapter;
 import org.hibernate.omm.jdbc.adapter.ConnectionAdapter;
 import org.hibernate.omm.jdbc.adapter.DatabaseMetaDataAdapter;
 import org.hibernate.omm.jdbc.exception.CommandRunFailSQLException;
@@ -163,16 +162,6 @@ public class MongoConnection implements ConnectionAdapter {
 
     @Override
     public Array createArrayOf(String typeName, Object[] elements) {
-        return new ArrayAdapter() {
-            @Override
-            public int getBaseType() {
-                return 0;
-            }
-
-            @Override
-            public Object getArray() {
-                return elements;
-            }
-        };
+        return new MongoArray(elements, typeName);
     }
 }

@@ -5,7 +5,6 @@ import org.hibernate.omm.jdbc.exception.SimulatedSQLException;
 
 import java.sql.Array;
 import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.Map;
 
 /**
