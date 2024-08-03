@@ -3,12 +3,11 @@ package org.hibernate.omm.dialect;
 import org.hibernate.boot.model.TypeContributions;
 import org.hibernate.dialect.DatabaseVersion;
 import org.hibernate.dialect.Dialect;
-import org.hibernate.dialect.PgJdbcHelper;
+import org.hibernate.dialect.PostgreSQLArrayJdbcType;
 import org.hibernate.dialect.PostgreSQLArrayJdbcTypeConstructor;
 import org.hibernate.dialect.PostgreSQLCastingInetJdbcType;
 import org.hibernate.dialect.PostgreSQLCastingIntervalSecondJdbcType;
 import org.hibernate.dialect.PostgreSQLCastingJsonJdbcType;
-import org.hibernate.dialect.PostgreSQLDriverKind;
 import org.hibernate.dialect.PostgreSQLEnumJdbcType;
 import org.hibernate.dialect.PostgreSQLOrdinalEnumJdbcType;
 import org.hibernate.dialect.PostgreSQLStructCastingJdbcType;
@@ -17,20 +16,31 @@ import org.hibernate.dialect.aggregate.AggregateSupport;
 import org.hibernate.dialect.aggregate.PostgreSQLAggregateSupport;
 import org.hibernate.engine.jdbc.dialect.spi.DialectResolutionInfo;
 import org.hibernate.omm.ast.MongoSqlAstTranslatorFactory;
+import org.hibernate.omm.jdbc.adapter.ArrayAdapter;
 import org.hibernate.omm.type.ObjectIdJavaType;
 import org.hibernate.omm.type.ObjectIdJdbcType;
 import org.hibernate.omm.util.StringUtil;
 import org.hibernate.service.ServiceRegistry;
 import org.hibernate.sql.ast.SqlAstTranslatorFactory;
 import org.hibernate.sql.ast.spi.SqlAppender;
+import org.hibernate.tool.schema.extract.spi.ColumnTypeInformation;
 import org.hibernate.type.JavaObjectType;
+import org.hibernate.type.descriptor.ValueBinder;
+import org.hibernate.type.descriptor.WrapperOptions;
+import org.hibernate.type.descriptor.java.BasicPluralJavaType;
+import org.hibernate.type.descriptor.java.JavaType;
+import org.hibernate.type.descriptor.jdbc.BasicBinder;
 import org.hibernate.type.descriptor.jdbc.BlobJdbcType;
 import org.hibernate.type.descriptor.jdbc.ClobJdbcType;
+import org.hibernate.type.descriptor.jdbc.JdbcType;
 import org.hibernate.type.descriptor.jdbc.ObjectNullAsBinaryTypeJdbcType;
 import org.hibernate.type.descriptor.jdbc.XmlJdbcType;
 import org.hibernate.type.descriptor.jdbc.spi.JdbcTypeRegistry;
 import org.hibernate.type.spi.TypeConfiguration;
 
+import java.sql.CallableStatement;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.sql.Types;
 
 /**
@@ -127,7 +137,34 @@ public class MongoDialect extends Dialect {
         jdbcTypeRegistry.addDescriptor( PostgreSQLOrdinalEnumJdbcType.INSTANCE );
         jdbcTypeRegistry.addDescriptor( PostgreSQLUUIDJdbcType.INSTANCE );
 
-        jdbcTypeRegistry.addTypeConstructor( PostgreSQLArrayJdbcTypeConstructor.INSTANCE );
+        jdbcTypeRegistry.addTypeConstructor( new PostgreSQLArrayJdbcTypeConstructor() {
+            @Override
+            public JdbcType resolveType(
+                    TypeConfiguration typeConfiguration,
+                    Dialect dialect,
+                    JdbcType elementType,
+                    ColumnTypeInformation columnTypeInformation) {
+                return new PostgreSQLArrayJdbcType(elementType) {
+                    @Override
+                    public <X> ValueBinder<X> getBinder(final JavaType<X> javaTypeDescriptor) {
+                        //noinspection unchecked
+                        final ValueBinder<Object> elementBinder = getElementJdbcType().getBinder(((BasicPluralJavaType<Object>) javaTypeDescriptor).getElementJavaType());
+                        return new BasicBinder<>(javaTypeDescriptor, this) {
+
+                            @Override
+                            protected void doBind(PreparedStatement st, X value, int index, WrapperOptions options) throws SQLException {
+                                st.setArray(index, (ArrayAdapter) () -> value);
+                            }
+
+                            @Override
+                            protected void doBind(final CallableStatement st, final X value, final String name, final WrapperOptions options) throws SQLException {
+
+                            }
+                        };
+                    }
+                };
+            }
+        } );
     }
 
     @Override

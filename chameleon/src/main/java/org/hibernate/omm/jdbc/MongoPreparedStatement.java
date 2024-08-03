@@ -4,7 +4,6 @@ import com.mongodb.assertions.Assertions;
 import com.mongodb.client.ClientSession;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.lang.Nullable;
-import org.bson.BsonWriter;
 import org.bson.codecs.Codec;
 import org.bson.codecs.EncoderContext;
 import org.bson.codecs.pojo.PojoCodecProvider;
@@ -35,12 +34,10 @@ import java.sql.SQLException;
 import java.sql.SQLXML;
 import java.sql.Time;
 import java.sql.Timestamp;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * Simulate JDBC's {@link java.sql.PreparedStatement} to create a virtual MongoDB JDBC layer
@@ -220,8 +217,11 @@ public class MongoPreparedStatement extends MongoStatement
             } else {
                 Class clazz = array[0].getClass();
                 Codec codec = pojoCodecProvider.get(clazz, mongoDatabase.getCodecRegistry());
-                JsonWriter jsonWriter = new JsonWriter(new CharArrayWriter());
-                jsonWriter.writeStartArray();
+                Assertions.assertNotNull(codec);
+                var stringWriter = new CharArrayWriter();
+                JsonWriter jsonWriter = new JsonWriter(stringWriter);
+                jsonWriter.writeStartDocument();
+                jsonWriter.writeStartArray("fakeRoot");
                 for (int i = 0; i < array.length; i++) {
                     if (i > 0) {
                         jsonWriter.writeString(", ");
@@ -229,7 +229,10 @@ public class MongoPreparedStatement extends MongoStatement
                     codec.encode(jsonWriter, array[i], EncoderContext.builder().build());
                 }
                 jsonWriter.writeEndArray();
-                json = jsonWriter.toString();
+                jsonWriter.writeEndDocument();
+                String wholeJson = stringWriter.toString();
+                int arrayStartIndex = wholeJson.indexOf('['), arrayEndIndex = wholeJson.lastIndexOf(']');
+                json = wholeJson.substring(arrayStartIndex, arrayEndIndex + 1);
             }
             parameters.put(parameterIndex, json);
         } catch (SQLException cause) {

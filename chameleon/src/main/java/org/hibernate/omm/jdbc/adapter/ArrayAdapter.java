@@ -5,6 +5,7 @@ import org.hibernate.omm.jdbc.exception.SimulatedSQLException;
 
 import java.sql.Array;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Map;
 
 /**
@@ -14,6 +15,11 @@ import java.util.Map;
  * @since 1.0.0
  */
 public interface ArrayAdapter extends Array {
+
+    @Override
+    default int getBaseType() throws SimulatedSQLException {
+        throw new NotSupportedSQLException();
+    }
 
     @Override
     default String getBaseTypeName() throws SimulatedSQLException {
